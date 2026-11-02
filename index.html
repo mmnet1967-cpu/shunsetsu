@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12324A">
+<title>浚渫 出来形記録</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  color-scheme: light;
+  --navy:#12324A; --yellow:#F2B705; --teal:#1C8C84; --orange:#E2621B;
+  --bg:#FFFFFF; --surface:#F1F4F6; --text:#14202B; --muted:#5B6B78; --line:#D3DAE0;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{ color-scheme: dark; --bg:#0F1A23; --surface:#172633; --text:#E8EEF3; --muted:#9AB0C0; --line:#2A3B4A; }
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font-family:"BIZ UDPGothic","Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;font-size:15px;line-height:1.5;display:flex;flex-direction:column;overflow:hidden}
+header{background:var(--navy);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.02em}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.chip{font-size:12px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.12);white-space:nowrap;font-variant-numeric:tabular-nums}
+.chip.ok{background:var(--teal)} .chip.warn{background:var(--orange)} .chip.rec{background:var(--yellow);color:#14202B;font-weight:700}
+#mapwrap{position:relative;flex:1;min-height:180px}
+#map{position:absolute;inset:0;background:#cfd8dc}
+.mapbtns{position:absolute;right:10px;top:10px;z-index:500;display:flex;flex-direction:column;gap:6px}
+.mapbtns button{min-width:56px;min-height:44px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit;font-size:13px;padding:4px 10px;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.mapbtns button[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+#banner{position:absolute;left:10px;right:76px;top:10px;z-index:550;background:var(--yellow);color:#14202B;padding:8px 10px;border-radius:8px;font-weight:700;display:none;align-items:center;gap:8px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+#banner span{flex:1 1 180px}
+#banner button{font:inherit;font-size:13px;min-height:38px;padding:4px 10px;border-radius:6px;border:1px solid #14202B;background:#fff;color:#14202B}
+#panel{background:var(--bg);border-top:3px solid var(--navy);display:flex;flex-direction:column;max-height:52vh}
+#panel.min .body{display:none}
+.tabs{display:flex;align-items:stretch;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;border:0;background:none;color:var(--muted);font:inherit;font-size:14px;padding:10px 4px;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--text);border-bottom-color:var(--yellow);font-weight:700}
+.tabs .fold{flex:0 0 48px;color:var(--text)}
+.body{overflow:auto;padding:12px}
+.pane{display:none} .pane.on{display:block}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+label.f{display:flex;flex-direction:column;font-size:12px;color:var(--muted);flex:1 1 120px;min-width:0}
+label.f.s{flex:0 1 96px}
+input,select{font:inherit;font-size:16px;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px;min-height:42px;width:100%}
+button.b{font:inherit;font-size:14px;min-height:44px;padding:8px 14px;border-radius:8px;border:1px solid var(--navy);background:var(--bg);color:var(--text)}
+button.b.pri{background:var(--navy);color:#fff}
+button.b.wide{width:100%}
+button.b.danger{border-color:var(--orange);color:var(--orange)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+#recBtn{width:100%;min-height:58px;font-size:18px;font-weight:700;border-radius:10px;border:0;background:var(--yellow);color:#14202B}
+#recBtn.on{background:var(--orange);color:#fff}
+.readout{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px;margin:12px 0;font-variant-numeric:tabular-nums}
+.readout div{border-left:3px solid var(--line);padding-left:8px}
+.readout b{display:block;font-size:11px;color:var(--muted);font-weight:400}
+.readout span{font-size:15px}
+.note{font-size:12px;color:var(--muted);margin:6px 0 10px}
+.summary{background:var(--surface);border-radius:8px;padding:8px 10px;font-size:14px;margin-bottom:10px;font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:4px}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:4px;border:1px solid var(--line)}
+.rot{display:flex;gap:6px;align-items:flex-end}
+.rot button{flex:none;min-width:52px}
+.layers{display:flex;flex-direction:column;gap:2px;margin-bottom:8px;max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.layers:empty{display:none}
+label.chk{display:flex;align-items:center;gap:8px;min-height:40px;font-size:14px}
+label.chk input{width:20px;height:20px;min-height:0;flex:none}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:8px;z-index:2000;max-width:90vw;display:none;font-size:14px}
+.leaflet-popup-content{font-family:inherit;font-size:13px;line-height:1.5;font-variant-numeric:tabular-nums}
+@media (min-width:900px){
+  body{flex-direction:row}
+  header{position:absolute;top:0;left:0;right:420px;z-index:600}
+  #mapwrap{margin-top:44px}
+  #panel{width:420px;max-height:none;border-top:0;border-left:3px solid var(--navy)}
+  .tabs .fold{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>浚渫 出来形記録</h1>
+  <div class="chips">
+    <span class="chip" id="cSrc">未接続</span>
+    <span class="chip" id="cQ">測位なし</span>
+    <span class="chip" id="cN">0点</span>
+    <span class="chip rec" id="cRec" hidden>記録中</span>
+  </div>
+</header>
+
+<div id="mapwrap">
+  <div id="map"></div>
+  <div id="banner"><span id="bannerText"></span><div id="bannerBtns"></div></div>
+  <div class="mapbtns">
+    <button id="bHere" aria-pressed="true" title="現在地を表示して追従">現在地</button>
+    <button id="bBase" title="背景地図の切替">標準</button>
+    <button id="bFit" title="メッシュ全体を表示">全体</button>
+  </div>
+</div>
+
+<section id="panel">
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-p="pRec">記録</button>
+    <button role="tab" aria-selected="false" data-p="pMesh">メッシュ</button>
+    <button role="tab" aria-selected="false" data-p="pOut">出力</button>
+    <button class="fold" id="bFold" aria-label="パネルを折りたたむ">▾</button>
+  </div>
+  <div class="body">
+
+    <div class="pane on" id="pRec">
+      <div class="row">
+        <label class="f">受信方法
+          <select id="sSrc">
+            <option value="ext">外部GNSS(DG-PRO1S)</option>
+            <option value="int">内部GNSS(端末内蔵)</option>
+          </select>
+        </label>
+        <button class="b pri" id="bConn">接続</button>
+      </div>
+      <p class="note" id="srcNote"></p>
+      <div class="row">
+        <label class="f">記録間隔
+          <select id="sIv">
+            <option value="1">1秒</option><option value="2">2秒</option><option value="5">5秒</option><option value="10">10秒</option>
+            <option value="30">30秒</option><option value="60">60秒</option><option value="120">120秒</option><option value="180">180秒</option>
+            <option value="360">360秒</option>
+          </select>
+        </label>
+      </div>
+      <button id="recBtn">記録開始</button>
+      <div class="readout">
+        <div><b>GNSS時刻</b><span id="oT">—</span></div>
+        <div><b>緯度 / 経度</b><span id="oLL">—</span></div>
+        <div><b>平面直角 X / Y (m)</b><span id="oXY">—</span></div>
+        <div><b>現在のメッシュ</b><span id="oCell">—</span></div>
+        <div><b>精度</b><span id="oAcc">—</span></div>
+        <div><b>次の記録まで</b><span id="oNext">—</span></div>
+      </div>
+      <p class="note">記録中は画面を点けたままにしてください(スリープ防止を自動で要求します)。記録点ごとにGNSS時刻と端末時刻の両方を保存します。</p>
+    </div>
+
+    <div class="pane" id="pMesh">
+      <div class="row">
+        <label class="f">平面直角座標系<select id="sZone"></select></label>
+        <label class="f">メッシュの作り方
+          <select id="sMode"><option value="grid">寸法を指定して作成</option><option value="dxf">DXFから取り込む</option></select>
+        </label>
+      </div>
+
+      <div id="gridBox">
+        <div class="row">
+          <label class="f s">幅(m)<input id="iW" type="number" min="0.5" step="0.5" inputmode="decimal"></label>
+          <label class="f s">奥行(m)<input id="iH" type="number" min="0.5" step="0.5" inputmode="decimal"></label>
+          <label class="f s">列数<input id="iC" type="number" min="1" step="1" inputmode="numeric"></label>
+          <label class="f s">行数<input id="iR" type="number" min="1" step="1" inputmode="numeric"></label>
+        </div>
+        <div class="row"><button class="b pri wide" id="bPick">地図をタップして原点と向きを決める</button></div>
+        <p class="note">①メッシュの角(原点)をタップ、②列を並べる方向の点をタップ、の順に決めます。行は列の向きに対して右側へ並びます。</p>
+        <div class="row rot">
+          <label class="f">回転(度・時計回り)<input id="iRot" type="number" step="0.1" inputmode="decimal"></label>
+          <button class="b" id="bRotM">−1°</button>
+          <button class="b" id="bRotP">+1°</button>
+        </div>
+        <div class="row">
+          <label class="f">原点X(北, m)<input id="iOX" type="number" step="0.001" inputmode="decimal"></label>
+          <label class="f">原点Y(東, m)<input id="iOY" type="number" step="0.001" inputmode="decimal"></label>
+        </div>
+      </div>
+
+      <div id="dxfBox" hidden>
+        <div class="row"><label class="f">DXFファイル<input id="fDxf" type="file" accept=".dxf,application/dxf,image/vnd.dxf"></label></div>
+        <div class="row">
+          <label class="f">座標の向き
+            <select id="sAxis"><option value="xy">CAD X=東(Y)、CAD Y=北(X)</option><option value="yx">CAD X=北(X)、CAD Y=東(Y)</option></select>
+          </label>
+          <label class="f s">単位<select id="sUnit"><option value="1">m</option><option value="0.001">mm</option></select></label>
+        </div>
+        <div class="layers" id="dxfLayers"></div>
+        <label class="chk"><input type="checkbox" id="cLabel" checked>メッシュ内の文字をメッシュIDにする</label>
+        <div class="row"><button class="b pri" id="bDxf">メッシュとして取り込む</button></div>
+        <p class="note">閉じたポリライン・3D面・ソリッドを1つずつのメッシュとして取り込みます。線分と開いたポリラインは参考線として表示します。ブロックは分解してから保存してください。図面は公共座標(平面直角座標)で作図されている必要があります。</p>
+        <div class="summary" id="dxfSum">DXF未読込</div>
+      </div>
+
+      <div class="summary" id="meshSum">メッシュ未作成</div>
+    </div>
+
+    <div class="pane" id="pOut">
+      <div class="row">
+        <button class="b pri" id="bPtCsv">記録点CSV</button>
+        <button class="b pri" id="bMeshCsv">メッシュ集計CSV</button>
+        <button class="b" id="bGeo">GeoJSON</button>
+      </div>
+      <p class="note">CSVはExcelでそのまま開けるUTF-8(BOM付き)です。記録点CSVの時刻を使って、別ソフトで高さと照合できます。</p>
+      <div class="summary" id="outSum"></div>
+      <div class="row"><button class="b danger" id="bClear">記録点をすべて消去</button></div>
+    </div>
+
+  </div>
+</section>
+<div id="toast" role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const STORE='shunsetsu-dekigata-v1';
+
+/* ===== 平面直角座標系(GRS80, 河瀬式) ===== */
+const ZONES=[null,
+ [33,129+30/60,'長崎県・鹿児島県の一部'],[33,131,'福岡・佐賀・熊本・大分・宮崎・鹿児島'],[36,132+10/60,'山口・島根・広島'],
+ [33,133+30/60,'香川・愛媛・徳島・高知'],[36,134+20/60,'兵庫・鳥取・岡山'],[36,136,'京都・大阪・福井・滋賀・三重・奈良・和歌山'],
+ [36,137+10/60,'石川・富山・岐阜・愛知'],[36,138+30/60,'新潟・長野・山梨・静岡'],[36,139+50/60,'東京・福島・栃木・茨城・埼玉・千葉・群馬・神奈川'],
+ [40,140+50/60,'青森・秋田・山形・岩手・宮城'],[44,140+15/60,'北海道西部'],[44,142+15/60,'北海道中部'],[44,144+15/60,'北海道東部'],
+ [26,142,'小笠原'],[26,127+30/60,'沖縄本島周辺'],[26,124,'先島諸島'],[26,131,'大東諸島'],[20,136,'沖ノ鳥島'],[26,154,'南鳥島']];
+const rad=d=>d*Math.PI/180,deg=r=>r*180/Math.PI;
+const GRS=(()=>{const a=6378137,F=298.257222101,n=1/(2*F-1),m0=0.9999;const n2=n*n,n3=n2*n,n4=n3*n,n5=n4*n,n6=n5*n;
+ const A=[1+n2/4+n4/64,-1.5*(n-n3/8-n5/64),15/16*(n2-n4/4),-35/48*(n3-5/16*n5),315/512*n4,-693/1280*n5];
+ const al=[0,n/2-2/3*n2+5/16*n3+41/180*n4-127/288*n5,13/48*n2-3/5*n3+557/1440*n4+281/630*n5,61/240*n3-103/140*n4+15061/26880*n5,49561/161280*n4-179/168*n5,34729/80640*n5];
+ const be=[0,n/2-2/3*n2+37/96*n3-1/360*n4-81/512*n5,1/48*n2+1/15*n3-437/1440*n4+46/105*n5,17/480*n3-37/840*n4-209/4480*n5,4397/161280*n4-11/504*n5,4583/161280*n5];
+ const de=[0,2*n-2/3*n2-2*n3+116/45*n4+26/45*n5-2854/675*n6,7/3*n2-8/5*n3-227/45*n4+2704/315*n5+2323/945*n6,56/15*n3-136/35*n4-1262/105*n5+73814/2835*n6,4279/630*n4-332/35*n5-399572/14175*n6,4174/315*n5-144838/6237*n6,601676/22275*n6];
+ const c=m0*a/(1+n);return{Abar:c*A[0],Sbar:p=>{let s=A[0]*p;for(let j=1;j<=5;j++)s+=A[j]*Math.sin(2*j*p);return c*s},al,be,de,k:2*Math.sqrt(n)/(1+n)}})();
+function toPlane(lat,lon,zone){const[la0,lo0]=ZONES[zone];const s=Math.sin(rad(lat));const t=Math.sinh(Math.atanh(s)-GRS.k*Math.atanh(GRS.k*s));const tb=Math.sqrt(1+t*t);const dl=rad(lon-lo0);const xi=Math.atan(t/Math.cos(dl)),eta=Math.atanh(Math.sin(dl)/tb);let x=xi,y=eta;for(let j=1;j<=5;j++){x+=GRS.al[j]*Math.sin(2*j*xi)*Math.cosh(2*j*eta);y+=GRS.al[j]*Math.cos(2*j*xi)*Math.sinh(2*j*eta)}return{X:GRS.Abar*x-GRS.Sbar(rad(la0)),Y:GRS.Abar*y}}
+function toLatLon(X,Y,zone){const[la0,lo0]=ZONES[zone];const xi=(X+GRS.Sbar(rad(la0)))/GRS.Abar,eta=Y/GRS.Abar;let xp=xi,ep=eta;for(let j=1;j<=5;j++){xp-=GRS.be[j]*Math.sin(2*j*xi)*Math.cosh(2*j*eta);ep-=GRS.be[j]*Math.cos(2*j*xi)*Math.sinh(2*j*eta)}const chi=Math.asin(Math.sin(xp)/Math.cosh(ep));let phi=chi;for(let j=1;j<=6;j++)phi+=GRS.de[j]*Math.sin(2*j*chi);return[deg(phi),lo0+deg(Math.atan(Math.sinh(ep)/Math.cos(xp)))]}
+
+/* ===== 状態と保存 ===== */
+const DEF={meshMode:'grid',zone:9,cellW:5,cellH:5,cols:20,rows:20,rot:0,oX:null,oY:null,interval:1,source:'ext',base:'std'};
+const S={settings:{...DEF},points:[],dxf:null};
+// 記録点: {t:GNSS時刻ms, rt:端末時刻ms, lat, lon, X, Y, acc, src('ext'|'int'), cell}
+function load(){try{const j=JSON.parse(localStorage.getItem(STORE)||'null');if(!j)return;Object.assign(S.settings,j.settings||{});
+ if(!['ext','int'].includes(S.settings.source))S.settings.source='ext';
+ if(![1,2,5,10,30,60,120,180,360].includes(+S.settings.interval))S.settings.interval=1;
+ if(!['photo','std','pale'].includes(S.settings.base))S.settings.base='std';
+ S.points=(j.points||[]).map(a=>a.length>9
+  ?{t:a[0],rt:a[1],lat:a[2],lon:a[3],X:a[4],Y:a[5],acc:a[6],src:'ext',cell:a[11]||''}   // 旧形式
+  :{t:a[0],rt:a[1],lat:a[2],lon:a[3],X:a[4],Y:a[5],acc:a[6],src:a[7],cell:a[8]||''});
+ S.dxf=j.dxf||null;}catch(e){console.warn(e)}}
+let saveTimer=null,lastSave=0;
+function save(now){clearTimeout(saveTimer);const run=()=>{lastSave=Date.now();try{localStorage.setItem(STORE,JSON.stringify({settings:S.settings,dxf:S.dxf,
+ points:S.points.map(p=>[p.t,p.rt,p.lat,p.lon,+p.X.toFixed(3),+p.Y.toFixed(3),p.acc!=null?+p.acc.toFixed(3):null,p.src,p.cell])}))}catch(e){toast('端末内への保存容量が不足しています。CSVを出力してから記録点を消去してください。')}};
+ if(now||Date.now()-lastSave>5000)run();else saveTimer=setTimeout(run,5000)}
+window.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')save(true)});
+window.addEventListener('pagehide',()=>save(true));
+
+function toast(m,ms=3200){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',ms)}
+const pad=(n,w=2)=>String(n).padStart(w,'0');
+function fmtLocal(ms,dec=1){if(ms==null)return'';const d=new Date(ms);let s=`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;if(dec)s+='.'+String(d.getMilliseconds()).padStart(3,'0').slice(0,dec);return s}
+const fmtUTC=ms=>ms==null?'':new Date(ms).toISOString();
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num=(id,min)=>{const v=parseFloat($(id).value);return isFinite(v)&&(min==null||v>=min)?v:null};
+
+/* ===== 地図 ===== */
+load();
+const map=L.map('map',{zoomControl:true,maxZoom:22,preferCanvas:true}).setView([35.68,139.77],6);
+const attr='<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>';
+const BASES={
+ std:{name:'標準',layer:L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',{attribution:attr,maxNativeZoom:18,maxZoom:22})},
+ photo:{name:'写真',layer:L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg',{attribution:attr,maxNativeZoom:18,maxZoom:22})},
+ pale:{name:'淡色',layer:L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',{attribution:attr,maxNativeZoom:18,maxZoom:22})}};
+const ORDER=['std','photo','pale'];
+function setBase(k){Object.values(BASES).forEach(b=>map.removeLayer(b.layer));BASES[k].layer.addTo(map);S.settings.base=k;
+ const nx=ORDER[(ORDER.indexOf(k)+1)%ORDER.length];$('#bBase').textContent=BASES[nx].name;$('#bBase').title=BASES[nx].name+'地図に切替';styleAll()}
+const renderer=L.canvas({padding:.3});
+const meshLayer=L.layerGroup().addTo(map),refLayer=L.layerGroup().addTo(map),ptLayer=L.layerGroup().addTo(map);
+const accCircle=L.circle([0,0],{radius:1,color:'#F2B705',weight:1,fillColor:'#F2B705',fillOpacity:.15,interactive:false});
+const curMk=L.circleMarker([0,0],{radius:9,color:'#F2B705',weight:4,fillColor:'#12324A',fillOpacity:1,interactive:false});
+const originMk=L.circleMarker([0,0],{radius:7,color:'#E2621B',weight:3,fillColor:'#fff',fillOpacity:1,interactive:false});
+let follow=true;
+function setFollow(v){follow=v;$('#bHere').setAttribute('aria-pressed',String(v))}
+
+/* ===== メッシュ ===== */
+let M=null;
+function uv(X,Y){const s=S.settings,th=rad(s.rot),dE=Y-s.oY,dN=X-s.oX;return[dE*Math.cos(th)-dN*Math.sin(th),-dE*Math.sin(th)-dN*Math.cos(th)]}
+function nodeXY(u,v){const s=S.settings,th=rad(s.rot);return{X:s.oX-u*Math.sin(th)-v*Math.cos(th),Y:s.oY+u*Math.cos(th)-v*Math.sin(th)}}
+const cellIdx=(X,Y)=>M?M.find(X,Y):-1;
+const cellName=i=>M.name(i);
+function pip(r,X,Y){let ins=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const xi=r[i][1],yi=r[i][0],xj=r[j][1],yj=r[j][0];if(((yi>X)!==(yj>X))&&(Y<(xj-xi)*(X-yi)/(yj-yi)+xi))ins=!ins}return ins}
+function ringArea(r){let s=0;for(let i=0,j=r.length-1;i<r.length;j=i++)s+=r[j][1]*r[i][0]-r[i][1]*r[j][0];return s/2}
+function ringCenter(r){const A=ringArea(r);if(Math.abs(A)<1e-9){let x=0,y=0;r.forEach(p=>{x+=p[0];y+=p[1]});return{X:x/r.length,Y:y/r.length}}
+ let cx=0,cy=0;for(let i=0,j=r.length-1;i<r.length;j=i++){const f=r[j][1]*r[i][0]-r[i][1]*r[j][0];cx+=(r[j][1]+r[i][1])*f;cy+=(r[j][0]+r[i][0])*f}return{Y:cx/(6*A),X:cy/(6*A)}}
+function makeIndex(rings){const bb=rings.map(r=>{let a=[Infinity,Infinity,-Infinity,-Infinity];r.forEach(([X,Y])=>{a[0]=Math.min(a[0],X);a[1]=Math.min(a[1],Y);a[2]=Math.max(a[2],X);a[3]=Math.max(a[3],Y)});return a});
+ const dims=bb.map(b=>Math.max(b[2]-b[0],b[3]-b[1])).sort((x,y)=>x-y);const size=Math.max(.5,(dims[dims.length>>1]||5)*2);const idx=new Map();
+ bb.forEach((b,i)=>{const gx0=Math.floor(b[1]/size),gx1=Math.floor(b[3]/size),gy0=Math.floor(b[0]/size),gy1=Math.floor(b[2]/size);
+  if((gx1-gx0+1)*(gy1-gy0+1)>20000)return; // 極端に大きい図形は索引対象外
+  for(let gx=gx0;gx<=gx1;gx++)for(let gy=gy0;gy<=gy1;gy++){const k=gx+','+gy;(idx.get(k)||idx.set(k,[]).get(k)).push(i)}});
+ const area=rings.map(r=>Math.abs(ringArea(r)));
+ return{find(X,Y){const arr=idx.get(Math.floor(Y/size)+','+Math.floor(X/size));if(!arr)return-1;let best=-1;
+  for(const i of arr){const b=bb[i];if(X<b[0]||X>b[2]||Y<b[1]||Y>b[3])continue;if(pip(rings[i],X,Y)&&(best<0||area[i]<area[best]))best=i}return best}}}
+function buildGridMesh(){const s=S.settings;
+ if(s.oX==null||s.oY==null)return;
+ if(s.cols*s.rows>40000){toast('メッシュ数が多すぎます(上限40,000)。列数・行数を減らしてください。');return}
+ const C=s.cols,R=s.rows,nodes=new Array((C+1)*(R+1));
+ for(let r=0;r<=R;r++)for(let c=0;c<=C;c++){const p=nodeXY(c*s.cellW,r*s.cellH);nodes[r*(C+1)+c]=toLatLon(p.X,p.Y,s.zone)}
+ const k=(r,c)=>nodes[r*(C+1)+c];
+ M={kind:'grid',N:C*R,
+  ll:i=>{const r=Math.floor(i/C),c=i%C;return[k(r,c),k(r,c+1),k(r+1,c+1),k(r+1,c)]},
+  find:(X,Y)=>{const[u,v]=uv(X,Y);const c=Math.floor(u/s.cellW),r=Math.floor(v/s.cellH);return(c<0||r<0||c>=C||r>=R)?-1:r*C+c},
+  name:i=>`R${Math.floor(i/C)+1}C${i%C+1}`,rc:i=>[Math.floor(i/C)+1,i%C+1],
+  center:i=>nodeXY((i%C+.5)*s.cellW,(Math.floor(i/C)+.5)*s.cellH),
+  bounds:L.latLngBounds([k(0,0),k(0,C),k(R,0),k(R,C)])};
+ originMk.setLatLng(k(0,0)).addTo(map)}
+function buildDxfMesh(){const d=S.dxf;if(!d||!d.cells.length)return;const z=S.settings.zone;
+ const rings=d.cells.map(c=>c.r),lls=rings.map(r=>r.map(([X,Y])=>toLatLon(X,Y,z))),ix=makeIndex(rings);
+ const all=[];lls.forEach(r=>r.forEach(p=>all.push(p)));
+ M={kind:'dxf',N:rings.length,ll:i=>lls[i],find:ix.find,name:i=>d.cells[i].n,rc:()=>['',''],center:i=>ringCenter(rings[i]),bounds:L.latLngBounds(all)};
+ (d.refs||[]).forEach(pts=>L.polyline(pts.map(([X,Y])=>toLatLon(X,Y,z)),{renderer,interactive:false,weight:2,dashArray:'6 4',color:refColor()}).addTo(refLayer))}
+const refColor=()=>S.settings.base==='photo'?'#FFFFFF':'#E2621B';
+function buildMesh(){meshLayer.clearLayers();refLayer.clearLayers();map.removeLayer(originMk);M=null;
+ if(S.settings.meshMode==='dxf')buildDxfMesh();else buildGridMesh();
+ if(M){const N=M.N;M.polys=new Array(N);for(let i=0;i<N;i++)M.polys[i]=L.polygon(M.ll(i),{renderer,interactive:false,weight:1}).addTo(meshLayer);
+  Object.assign(M,{n:new Int32Array(N),first:new Array(N).fill(null),last:new Array(N).fill(null)})}
+ recount()}
+function recount(){if(!M){S.points.forEach(p=>p.cell='');styleAll();updMeshSum();return}
+ M.n.fill(0);M.first.fill(null);M.last.fill(null);
+ for(const p of S.points){const i=cellIdx(p.X,p.Y);p.cell=i<0?'':cellName(i);if(i>=0)addToCell(i,p,false)}
+ styleAll();updMeshSum()}
+function addToCell(i,p,restyle=true){M.n[i]++;if(M.first[i]==null||p.t<M.first[i])M.first[i]=p.t;if(M.last[i]==null||p.t>M.last[i])M.last[i]=p.t;if(restyle)styleCell(i)}
+function styleCell(i){const line=S.settings.base==='photo'?'#F2B705':'#12324A';
+ M.polys[i].setStyle({color:line,weight:1,opacity:.9,fillColor:'#1C8C84',fillOpacity:M.n[i]>0?.5:0})}
+function styleAll(){refLayer.eachLayer(l=>l.setStyle({color:refColor()}));if(M)for(let i=0;i<M.polys.length;i++)styleCell(i);ptLayer.eachLayer(l=>l.setStyle&&l.setStyle(ptStyle()))}
+function updMeshSum(){const s=S.settings;if(!M){$('#meshSum').textContent=s.meshMode==='dxf'?'メッシュ未作成。DXFを選んで取り込んでください。':'メッシュ未作成。「地図をタップして原点と向きを決める」を押してください。';updOut();return}
+ let done=0;for(let i=0;i<M.n.length;i++)if(M.n[i]>0)done++;
+ const N=M.N,head=M.kind==='grid'?`${s.cols}列 × ${s.rows}行 = ${N.toLocaleString()}メッシュ(${(s.cols*s.cellW).toFixed(1)}m × ${(s.rows*s.cellH).toFixed(1)}m)`:`DXF「${S.dxf.file}」から ${N.toLocaleString()}メッシュ`;
+ $('#meshSum').innerHTML=`${esc(head)}<br>済 ${done.toLocaleString()}(${(done/N*100).toFixed(1)}%)/ 未 ${(N-done).toLocaleString()}<div class="legend"><span><i style="background:rgba(28,140,132,.5)"></i>済(記録点あり)</span><span><i></i>未</span></div>`;updOut()}
+
+/* ===== 記録点の描画 ===== */
+const ptStyle=()=>({radius:3,color:S.settings.base==='photo'?'#FFFFFF':'#12324A',weight:1,fillColor:'#12324A',fillOpacity:1});
+function drawPoint(p){L.circleMarker([p.lat,p.lon],{renderer,interactive:false,...ptStyle()}).addTo(ptLayer)}
+function redrawPoints(){ptLayer.clearLayers();S.points.forEach(drawPoint)}
+
+/* ===== 受信(端末の位置情報) ===== */
+let fix=null,geoWatch=null,zoomed=false,connected=false;
+const SRC={ext:'外部GNSS',int:'内部GNSS'};
+const NOTE={ext:'Drogger GPS アプリでDG-PRO1Sに接続し、開発者向けオプションの「仮の現在地情報アプリ」に Drogger GPS を選んでおいてください。',
+ int:'スマホ内蔵のGNSSを使います。開発者向けオプションの「仮の現在地情報アプリ」は「なし」にしてください(Drogger GPSが選ばれていると外部GNSSの位置になります)。精度は数m程度です。'};
+function onFix(f){const p=toPlane(f.lat,f.lon,S.settings.zone);f.X=p.X;f.Y=p.Y;fix=f;
+ const ll=[f.lat,f.lon];curMk.setLatLng(ll);if(!map.hasLayer(curMk))curMk.addTo(map);
+ if(f.acc!=null){accCircle.setLatLng(ll).setRadius(f.acc);if(!map.hasLayer(accCircle))accCircle.addTo(map)}
+ if(!zoomed){zoomed=true;if(follow)map.setView(ll,Math.max(map.getZoom(),19),{animate:false})}else if(follow)map.panTo(ll,{animate:false});
+ const cq=$('#cQ');cq.textContent=f.acc!=null?`±${f.acc<10?f.acc.toFixed(2):f.acc.toFixed(0)}m`:'測位中';
+ cq.className='chip '+(f.acc!=null&&f.acc<=1?'ok':f.acc!=null&&f.acc>5?'warn':'');
+ $('#oT').textContent=fmtLocal(f.t);$('#oLL').textContent=`${f.lat.toFixed(8)} / ${f.lon.toFixed(8)}`;
+ $('#oXY').textContent=`${f.X.toFixed(3)} / ${f.Y.toFixed(3)}`;const i=cellIdx(f.X,f.Y);$('#oCell').textContent=i<0?(M?'範囲外':'—'):`${cellName(i)}(${M.n[i]}点)`;
+ $('#oAcc').textContent=f.acc!=null?`±${f.acc.toFixed(2)}m`:'—'}
+function connect(){if(!('geolocation' in navigator)){toast('この端末では位置情報を取得できません');return}
+ geoWatch=navigator.geolocation.watchPosition(p=>onFix({t:p.timestamp,rt:Date.now(),lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,src:S.settings.source}),
+  e=>{toast(e.code===1?'位置情報の利用が許可されていません。ブラウザの設定で許可してください。':'位置情報を取得できません:'+e.message,5000);if(e.code===1)disconnect()},
+  {enableHighAccuracy:true,maximumAge:0,timeout:20000});setConn(true)}
+function disconnect(){if(geoWatch!=null)navigator.geolocation.clearWatch(geoWatch);geoWatch=null;setConn(false)}
+function setConn(on){connected=on;$('#bConn').textContent=on?'切断':'接続';$('#bConn').classList.toggle('pri',!on);
+ $('#cSrc').textContent=on?SRC[S.settings.source]:'未接続';$('#cSrc').className='chip '+(on?'ok':'');$('#sSrc').disabled=on}
+$('#bConn').onclick=()=>connected?disconnect():connect();
+$('#bHere').onclick=()=>{if(!connected){toast('「記録」タブの「接続」を押すと現在地を表示します');return}
+ setFollow(true);if(fix)map.setView([fix.lat,fix.lon],Math.max(map.getZoom(),19));else toast('現在地を測位中です')};
+$('#sSrc').onchange=e=>{S.settings.source=e.target.value;$('#srcNote').textContent=NOTE[e.target.value];save()};
+
+/* ===== 記録 ===== */
+const rec={on:false,timer:null,next:0,miss:0};let wake=null;
+async function reqWake(){try{if('wakeLock' in navigator&&rec.on)wake=await navigator.wakeLock.request('screen')}catch{}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reqWake()});
+function setRec(on){rec.on=on;const b=$('#recBtn');b.textContent=on?'記録停止':'記録開始';b.classList.toggle('on',on);$('#cRec').hidden=!on;
+ $('#sIv').disabled=on;clearInterval(rec.timer);
+ if(on){const iv=S.settings.interval*1000;rec.next=Math.ceil(Date.now()/iv)*iv;rec.miss=0;rec.timer=setInterval(tick,200);reqWake()}
+ else{try{wake?.release()}catch{}wake=null;$('#oNext').textContent='—';save(true)}}
+function tick(){const now=Date.now(),iv=S.settings.interval*1000;
+ if(now>=rec.next){record();rec.next=Math.floor(now/iv)*iv+iv}
+ const r=Math.max(0,rec.next-now);$('#oNext').textContent=(r/1000).toFixed(r<10000?1:0)+'秒'+(rec.miss?`(未測位で見送り ${rec.miss}回)`:'')}
+function record(){if(!fix||Date.now()-fix.rt>3000){rec.miss++;return}
+ const f=fix,p={t:f.t,rt:Date.now(),lat:f.lat,lon:f.lon,X:f.X,Y:f.Y,acc:f.acc,src:f.src,cell:''};
+ const i=cellIdx(p.X,p.Y);if(i>=0)p.cell=cellName(i);S.points.push(p);if(i>=0){addToCell(i,p);updMeshSum()}
+ drawPoint(p);$('#cN').textContent=S.points.length.toLocaleString()+'点';updOut();save()}
+$('#recBtn').onclick=()=>{if(!rec.on&&!connected){connect();toast('接続しました。測位が始まると記録されます。')}setRec(!rec.on)};
+$('#sIv').onchange=e=>{S.settings.interval=+e.target.value;save()};
+
+/* ===== メッシュ設定(寸法指定) ===== */
+for(let z=1;z<ZONES.length;z++){const o=document.createElement('option');o.value=z;o.textContent=`${['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX'][z]}系(${ZONES[z][2]})`;$('#sZone').append(o)}
+function fillUI(){const s=S.settings;$('#sZone').value=s.zone;$('#iW').value=s.cellW;$('#iH').value=s.cellH;$('#iC').value=s.cols;$('#iR').value=s.rows;$('#iRot').value=s.rot;
+ $('#iOX').value=s.oX!=null?s.oX.toFixed(3):'';$('#iOY').value=s.oY!=null?s.oY.toFixed(3):'';
+ $('#sMode').value=s.meshMode;$('#gridBox').hidden=s.meshMode!=='grid';$('#dxfBox').hidden=s.meshMode!=='dxf';
+ $('#sSrc').value=s.source;$('#srcNote').textContent=NOTE[s.source];$('#sIv').value=String(s.interval)}
+function reproject(){const z=S.settings.zone;S.points.forEach(p=>{const q=toPlane(p.lat,p.lon,z);p.X=q.X;p.Y=q.Y});if(fix){const q=toPlane(fix.lat,fix.lon,z);fix.X=q.X;fix.Y=q.Y}}
+function readGrid(){const s=S.settings,w=num('#iW',.1),h=num('#iH',.1),c=num('#iC',1),r=num('#iR',1);
+ if(w==null||h==null||c==null||r==null){toast('メッシュの幅・奥行と列数・行数を正しく入力してください');return false}
+ s.cellW=w;s.cellH=h;s.cols=Math.round(c);s.rows=Math.round(r);return true}
+function refreshGrid(){if(S.settings.meshMode!=='grid'||S.settings.oX==null)return;buildMesh();save(true)}
+['#iW','#iH','#iC','#iR'].forEach(id=>$(id).onchange=()=>{if(readGrid())refreshGrid()});
+$('#iRot').onchange=()=>{const v=num('#iRot');if(v==null)return;S.settings.rot=+(((v+180)%360+360)%360-180).toFixed(1);$('#iRot').value=S.settings.rot;refreshGrid()};
+const stepRot=d=>{const s=S.settings;s.rot=+((((s.rot+d)+180)%360+360)%360-180).toFixed(1);$('#iRot').value=s.rot;refreshGrid()};
+$('#bRotM').onclick=()=>stepRot(-1);$('#bRotP').onclick=()=>stepRot(1);
+['#iOX','#iOY'].forEach(id=>$(id).onchange=()=>{const x=num('#iOX'),y=num('#iOY');if(x==null||y==null)return;S.settings.oX=x;S.settings.oY=y;S.settings.meshMode='grid';refreshGrid()});
+$('#sZone').onchange=e=>{S.settings.zone=+e.target.value;reproject();if(S.settings.oX!=null||S.dxf)buildMesh();else recount();save(true)};
+$('#sMode').onchange=e=>{const m=e.target.value;$('#gridBox').hidden=m!=='grid';$('#dxfBox').hidden=m!=='dxf';
+ if((m==='grid'&&S.settings.oX!=null)||(m==='dxf'&&S.dxf)){S.settings.meshMode=m;buildMesh();save(true);fitMesh()}};
+
+/* 地図タップ: ①原点 → ②向き */
+let pick=0;
+function banner(text,btns){$('#bannerText').textContent=text;const b=$('#bannerBtns');b.innerHTML='';
+ btns.forEach(([label,fn])=>{const x=document.createElement('button');x.textContent=label;x.onclick=fn;b.append(x)});$('#banner').style.display=text?'flex':'none'}
+function endPick(){pick=0;banner('',[])}
+$('#bPick').onclick=()=>{if(!readGrid())return;pick=1;setFollow(false);if(window.innerWidth<900){$('#panel').classList.add('min');$('#bFold').textContent='▴';setTimeout(()=>map.invalidateSize(),50)}
+ banner('① メッシュの角(原点)をタップしてください',[['やめる',endPick]])};
+map.on('click',e=>{const s=S.settings;
+ if(pick===1){const p=toPlane(e.latlng.lat,e.latlng.lng,s.zone);s.oX=p.X;s.oY=p.Y;s.meshMode='grid';fillUI();buildMesh();save(true);pick=2;
+  banner('② 列を並べる方向の点をタップしてください',[['真東向きで決定',()=>{endPick();toast('原点を決めました。回転は「メッシュ」タブで微調整できます')}],['やめる',endPick]]);return}
+ if(pick===2){const p=toPlane(e.latlng.lat,e.latlng.lng,s.zone),dE=p.Y-s.oY,dN=p.X-s.oX;
+  if(Math.hypot(dE,dN)<.5){toast('原点に近すぎます。少し離れた位置をタップしてください');return}
+  s.rot=+deg(Math.atan2(-dN,dE)).toFixed(1);fillUI();buildMesh();save(true);endPick();
+  $('#panel').classList.remove('min');$('#bFold').textContent='▾';setTimeout(()=>map.invalidateSize(),50);
+  toast(`向きを${s.rot}°に設定しました。「−1°」「+1°」で微調整できます`,4000);return}
+ if(!M)return;const p=toPlane(e.latlng.lat,e.latlng.lng,s.zone);const i=cellIdx(p.X,p.Y);if(i<0)return;
+ L.popup().setLatLng(e.latlng).setContent(`<b>${esc(cellName(i))}</b><br>記録点 ${M.n[i]}点<br>初回 ${M.first[i]?fmtLocal(M.first[i],0):'—'}<br>最終 ${M.last[i]?fmtLocal(M.last[i],0):'—'}`).openOn(map)});
+map.on('dragstart',()=>{if(follow)setFollow(false)});
+function fitMesh(){if(M)map.fitBounds(M.bounds,{padding:[20,20]})}
+$('#bFit').onclick=()=>{if(M){setFollow(false);fitMesh()}else toast('メッシュが未作成です')};
+$('#bBase').onclick=()=>{setBase(ORDER[(ORDER.indexOf(S.settings.base)+1)%ORDER.length]);save()};
+document.querySelectorAll('.tabs [role=tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs [role=tab]').forEach(x=>x.setAttribute('aria-selected',String(x===b)));
+ document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===b.dataset.p));$('#panel').classList.remove('min');$('#bFold').textContent='▾';setTimeout(()=>map.invalidateSize(),50)});
+$('#bFold').onclick=()=>{const m=$('#panel').classList.toggle('min');$('#bFold').textContent=m?'▴':'▾';setTimeout(()=>map.invalidateSize(),50)};
+
+/* ===== DXF取込 ===== */
+let dxfParsed=null;
+async function readDxfText(file){const buf=await file.arrayBuffer();
+ if(new TextDecoder('latin1').decode(buf.slice(0,22)).startsWith('AutoCAD Binary DXF'))throw new Error('バイナリ形式のDXFです。CADでASCII形式のDXFとして保存し直してください。');
+ let t;try{t=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch{t=new TextDecoder('shift_jis').decode(buf)}
+ return t.replace(/\\U\+([0-9A-Fa-f]{4})/g,(_,h)=>String.fromCharCode(parseInt(h,16)))}
+function parseDxf(text){const ln=text.split(/\r\n|\r|\n/),P=[];let i=0;
+ while(i+1<ln.length){const c=parseInt(ln[i].trim(),10);if(isNaN(c)){i++;continue}P.push([c,ln[i+1]]);i+=2}
+ let insunits=0;for(let k=0;k<P.length-1;k++)if(P[k][0]===9&&P[k][1].trim()==='$INSUNITS'){insunits=+P[k+1][1];break}
+ let s=-1;for(let k=0;k<P.length-1;k++)if(P[k][0]===0&&P[k][1].trim()==='SECTION'&&P[k+1][0]===2&&P[k+1][1].trim()==='ENTITIES'){s=k+2;break}
+ if(s<0)throw new Error('図形(ENTITIES)が見つかりません');
+ const ents=[];let cur=null;for(let k=s;k<P.length;k++){const[c,v]=P[k];if(c===0){if(v.trim()==='ENDSEC')break;cur={t:v.trim(),g:P[k+1]?[]:[]};ents.push(cur)}else if(cur)cur.g.push([c,v])}
+ const get=(e,c)=>{for(const[k,v]of e.g)if(k===c)return v;return null},num=(e,c)=>parseFloat(get(e,c));
+ const polys=[],lines=[],texts=[],stat={};let inserts=0;
+ const bump=(l,k)=>{(stat[l]||(stat[l]={poly:0,line:0}))[k]++};
+ const near=(a,b)=>Math.abs(a[0]-b[0])<1e-6&&Math.abs(a[1]-b[1])<1e-6;
+ function shape(pts,closed,layer){pts=pts.filter((p,k)=>isFinite(p[0])&&isFinite(p[1])&&(k===0||!near(p,pts[k-1])));
+  if(!closed&&pts.length>=4&&near(pts[0],pts[pts.length-1])){closed=true}
+  if(closed&&pts.length>1&&near(pts[0],pts[pts.length-1]))pts.pop();
+  if(closed&&pts.length>=3){polys.push({layer,ring:pts});bump(layer,'poly')}else if(pts.length>=2){lines.push({layer,pts});bump(layer,'line')}}
+ for(let k=0;k<ents.length;k++){const e=ents[k],ty=e.t,layer=(get(e,8)||'0').trim();
+  if(ty==='LWPOLYLINE'){const pts=[];let x=null;for(const[c,v]of e.g){if(c===10)x=+v;else if(c===20&&x!=null){pts.push([x,+v]);x=null}}shape(pts,(+get(e,70)||0)&1,layer)}
+  else if(ty==='POLYLINE'){const fl=+get(e,70)||0,pts=[];let j=k+1;for(;j<ents.length&&ents[j].t!=='SEQEND';j++)if(ents[j].t==='VERTEX'){const vf=+get(ents[j],70)||0;if(vf&128&&!(vf&64))continue;pts.push([num(ents[j],10),num(ents[j],20)])}
+   k=j;if(fl&(16|64))continue;shape(pts,fl&1,layer)}
+  else if(ty==='LINE')shape([[num(e,10),num(e,20)],[num(e,11),num(e,21)]],false,layer);
+  else if(ty==='3DFACE'||ty==='SOLID'){const p=[10,11,12,13].map(c=>[num(e,c),num(e,c+10)]);shape(ty==='SOLID'?[p[0],p[1],p[3],p[2]]:p,true,layer)}
+  else if(ty==='TEXT'||ty==='MTEXT'){let txt='';for(const[c,v]of e.g)if(c===3||c===1)txt+=v;
+   txt=txt.replace(/\\[PpNn~]/g,' ').replace(/\\[A-Za-z][^;\\{}]*;/g,'').replace(/[{}]/g,'').replace(/%%[A-Za-z]/g,'').trim();
+   const al=ty==='TEXT'&&((+get(e,72)||0)||(+get(e,73)||0))&&get(e,11)!=null;const pos=al?[num(e,11),num(e,21)]:[num(e,10),num(e,20)];
+   if(txt&&isFinite(pos[0]))texts.push({layer,txt,pos})}
+  else if(ty==='INSERT')inserts++}
+ return{polys,lines,texts,stat,inserts,insunits}}
+$('#fDxf').onchange=async e=>{const f=e.target.files[0];if(!f)return;dxfParsed=null;$('#dxfLayers').innerHTML='';
+ try{const d=parseDxf(await readDxfText(f));d.file=f.name;dxfParsed=d;
+  if(d.insunits===4)$('#sUnit').value='0.001';else if(d.insunits===6)$('#sUnit').value='1';
+  const box=$('#dxfLayers');Object.keys(d.stat).sort().forEach(l=>{const st=d.stat[l],lab=document.createElement('label');lab.className='chk';
+   lab.innerHTML=`<input type="checkbox" value="${esc(l)}" ${st.poly?'checked':''}> ${esc(l)}(メッシュ ${st.poly} / 線 ${st.line})`;box.append(lab)});
+  $('#dxfSum').textContent=`閉じた図形 ${d.polys.length}、線 ${d.lines.length}、文字 ${d.texts.length} を検出しました。使う画層を選んで取り込んでください。`+(d.inserts?`(ブロック ${d.inserts}個は分解されていないため読み込めません)`:'');
+ }catch(err){$('#dxfSum').textContent='読み込めませんでした:'+err.message}};
+$('#bDxf').onclick=()=>{const d=dxfParsed;if(!d){toast('先にDXFファイルを選んでください');return}
+ const use=new Set([...$('#dxfLayers').querySelectorAll('input:checked')].map(x=>x.value));
+ const sc=+$('#sUnit').value,ax=$('#sAxis').value,conv=([x,y])=>ax==='xy'?[y*sc,x*sc]:[x*sc,y*sc];
+ const cells=d.polys.filter(p=>use.has(p.layer)).map(p=>({n:'',r:p.ring.map(conv).map(([X,Y])=>[+X.toFixed(3),+Y.toFixed(3)])}));
+ if(!cells.length){toast('選んだ画層に閉じた図形がありません');return}
+ const refs=d.lines.filter(l=>use.has(l.layer)).map(l=>l.pts.map(conv).map(([X,Y])=>[+X.toFixed(3),+Y.toFixed(3)]));
+ const zone=+$('#sZone').value;
+ let cx=0,cy=0;cells.forEach(c=>{const m=ringCenter(c.r);cx+=m.X;cy+=m.Y});cx/=cells.length;cy/=cells.length;const ll=toLatLon(cx,cy,zone);
+ if(!(ll[0]>20&&ll[0]<46&&ll[1]>122&&ll[1]<155)&&!confirm(`図面の中心が日本の範囲外(緯度${ll[0].toFixed(2)}・経度${ll[1].toFixed(2)})になります。座標系・座標の向き・単位を確認してください。このまま取り込みますか?`))return;
+ if($('#cLabel').checked){const ix=makeIndex(cells.map(c=>c.r));d.texts.forEach(t=>{const[X,Y]=conv(t.pos),i=ix.find(X,Y);if(i>=0&&!cells[i].n)cells[i].n=t.txt})}
+ const seen={};cells.forEach((c,i)=>{let n=c.n||`M${i+1}`;if(seen[n]){let k=2;while(seen[`${n}_${k}`])k++;n=`${n}_${k}`}seen[n]=1;c.n=n});
+ S.settings.zone=zone;S.settings.meshMode='dxf';S.dxf={file:d.file,cells,refs};reproject();
+ buildMesh();save(true);fitMesh();setFollow(false);
+ $('#dxfSum').textContent=`${cells.length.toLocaleString()}メッシュと参考線 ${refs.length}本を取り込みました。`};
+
+/* ===== 出力 ===== */
+function stamp(){const d=new Date();return`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`}
+function download(name,text,type){const blob=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
+const csv=rows=>'\uFEFF'+rows.map(r=>r.map(v=>v==null?'':(/[",\n]/.test(String(v))?`"${String(v).replace(/"/g,'""')}"`:v)).join(',')).join('\r\n');
+$('#bPtCsv').onclick=()=>{if(!S.points.length){toast('記録点がありません');return}const z=S.settings.zone;
+ const rows=[['No','GNSS時刻(UTC)','GNSS時刻','端末記録時刻','緯度','経度',`X(${z}系)`,`Y(${z}系)`,'精度(m)','受信方法','メッシュID']];
+ S.points.forEach((p,i)=>rows.push([i+1,fmtUTC(p.t),fmtLocal(p.t,3),fmtLocal(p.rt,3),p.lat.toFixed(9),p.lon.toFixed(9),p.X.toFixed(3),p.Y.toFixed(3),p.acc!=null?p.acc.toFixed(3):'',SRC[p.src]||'',p.cell]));
+ download(`浚渫_記録点_${stamp()}.csv`,csv(rows),'text/csv')};
+$('#bMeshCsv').onclick=()=>{if(!M){toast('メッシュが未作成です');return}const s=S.settings;
+ const rows=[['メッシュID','行','列','中心X','中心Y','中心緯度','中心経度','記録点数','状態','初回時刻','最終時刻']];
+ for(let i=0;i<M.N;i++){const[r,c]=M.rc(i),ct=M.center(i),ll=toLatLon(ct.X,ct.Y,s.zone);
+  rows.push([cellName(i),r,c,ct.X.toFixed(3),ct.Y.toFixed(3),ll[0].toFixed(9),ll[1].toFixed(9),M.n[i],M.n[i]>0?'済':'未',fmtLocal(M.first[i],0),fmtLocal(M.last[i],0)])}
+ download(`浚渫_メッシュ集計_${stamp()}.csv`,csv(rows),'text/csv')};
+$('#bGeo').onclick=()=>{const fs=[],s=S.settings;
+ if(M)for(let i=0;i<M.N;i++){const ring=M.ll(i).map(p=>[p[1],p[0]]);ring.push(ring[0]);
+  fs.push({type:'Feature',properties:{kind:'mesh',id:cellName(i),count:M.n[i]},geometry:{type:'Polygon',coordinates:[ring]}})}
+ if(S.dxf&&s.meshMode==='dxf')(S.dxf.refs||[]).forEach(pts=>fs.push({type:'Feature',properties:{kind:'ref'},geometry:{type:'LineString',coordinates:pts.map(([X,Y])=>{const l=toLatLon(X,Y,s.zone);return[l[1],l[0]]})}}));
+ S.points.forEach((p,i)=>fs.push({type:'Feature',properties:{kind:'point',no:i+1,time_utc:fmtUTC(p.t),X:+p.X.toFixed(3),Y:+p.Y.toFixed(3),cell:p.cell},geometry:{type:'Point',coordinates:[p.lon,p.lat]}}));
+ if(!fs.length){toast('出力するデータがありません');return}download(`浚渫_${stamp()}.geojson`,JSON.stringify({type:'FeatureCollection',features:fs}),'application/geo+json')};
+$('#bClear').onclick=()=>{if(!S.points.length)return;if(!confirm(`記録点 ${S.points.length}点を消去します。先にCSVを出力しましたか?`))return;S.points=[];redrawPoints();recount();$('#cN').textContent='0点';save(true);toast('記録点を消去しました')};
+function updOut(){const n=S.points.length;$('#outSum').textContent=n?`記録点 ${n.toLocaleString()}点(${fmtLocal(S.points[0].t,0)} 〜 ${fmtLocal(S.points[n-1].t,0)})`:'記録点はまだありません'}
+
+/* ===== 起動 ===== */
+fillUI();setBase(S.settings.base);buildMesh();redrawPoints();$('#cN').textContent=S.points.length.toLocaleString()+'点';updOut();
+if(M){fitMesh();setFollow(false)}
+// 位置情報が許可済みなら自動で接続して現在地を表示
+try{navigator.permissions?.query({name:'geolocation'}).then(r=>{if(r.state==='granted'&&!connected)connect()}).catch(()=>{})}catch{}
+</script>
+</body>
+</html>
