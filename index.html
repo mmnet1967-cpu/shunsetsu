@@ -82,7 +82,7 @@ label.chk input{width:20px;height:20px;min-height:0;flex:none}
 </head>
 <body>
 <header>
-  <h1>浚渫 出来形記録</h1>
+  <h1>浚渫 出来形記録 <small style="font-weight:400;font-size:11px;opacity:.8">v1.4</small></h1>
   <div class="chips">
     <span class="chip" id="cSrc">未接続</span>
     <span class="chip" id="cQ">測位なし</span>
@@ -114,13 +114,14 @@ label.chk input{width:20px;height:20px;min-height:0;flex:none}
       <div class="row">
         <label class="f">受信方法
           <select id="sSrc">
-            <option value="ext">外部GNSS(DG-PRO1S)</option>
+            <option value="bt">外部GNSS(DG-PRO1S・Bluetooth直接)</option>
             <option value="int">内部GNSS(端末内蔵)</option>
           </select>
         </label>
         <button class="b pri" id="bConn">接続</button>
       </div>
       <p class="note" id="srcNote"></p>
+      <div class="summary" id="btDiag" hidden></div>
       <div class="row">
         <label class="f">記録間隔
           <select id="sIv">
@@ -136,7 +137,7 @@ label.chk input{width:20px;height:20px;min-height:0;flex:none}
         <div><b>緯度 / 経度</b><span id="oLL">—</span></div>
         <div><b>平面直角 X / Y (m)</b><span id="oXY">—</span></div>
         <div><b>現在のメッシュ</b><span id="oCell">—</span></div>
-        <div><b>精度</b><span id="oAcc">—</span></div>
+        <div><b>精度 / 測位品質 / 衛星</b><span id="oAcc">—</span></div>
         <div><b>次の記録まで</b><span id="oNext">—</span></div>
       </div>
       <p class="note">記録中は画面を点けたままにしてください(スリープ防止を自動で要求します)。記録点ごとにGNSS時刻と端末時刻の両方を保存します。</p>
@@ -227,20 +228,20 @@ function toPlane(lat,lon,zone){const[la0,lo0]=ZONES[zone];const s=Math.sin(rad(l
 function toLatLon(X,Y,zone){const[la0,lo0]=ZONES[zone];const xi=(X+GRS.Sbar(rad(la0)))/GRS.Abar,eta=Y/GRS.Abar;let xp=xi,ep=eta;for(let j=1;j<=5;j++){xp-=GRS.be[j]*Math.sin(2*j*xi)*Math.cosh(2*j*eta);ep-=GRS.be[j]*Math.cos(2*j*xi)*Math.sinh(2*j*eta)}const chi=Math.asin(Math.sin(xp)/Math.cosh(ep));let phi=chi;for(let j=1;j<=6;j++)phi+=GRS.de[j]*Math.sin(2*j*chi);return[deg(phi),lo0+deg(Math.atan(Math.sinh(ep)/Math.cos(xp)))]}
 
 /* ===== 状態と保存 ===== */
-const DEF={meshMode:'grid',zone:9,cellW:5,cellH:5,cols:20,rows:20,rot:0,oX:null,oY:null,interval:1,source:'ext',base:'std'};
+const DEF={meshMode:'grid',zone:9,cellW:5,cellH:5,cols:20,rows:20,rot:0,oX:null,oY:null,interval:1,source:'bt',base:'std'};
 const S={settings:{...DEF},points:[],dxf:null};
 // 記録点: {t:GNSS時刻ms, rt:端末時刻ms, lat, lon, X, Y, acc, src('ext'|'int'), cell}
 function load(){try{const j=JSON.parse(localStorage.getItem(STORE)||'null');if(!j)return;Object.assign(S.settings,j.settings||{});
- if(!['ext','int'].includes(S.settings.source))S.settings.source='ext';
+ if(S.settings.source!=='int')S.settings.source='bt'; // 旧「アプリ経由」は外部GNSS(直接)へ移行
  if(![1,2,5,10,30,60,120,180,360].includes(+S.settings.interval))S.settings.interval=1;
  if(!['photo','std','pale'].includes(S.settings.base))S.settings.base='std';
- S.points=(j.points||[]).map(a=>a.length>9
-  ?{t:a[0],rt:a[1],lat:a[2],lon:a[3],X:a[4],Y:a[5],acc:a[6],src:'ext',cell:a[11]||''}   // 旧形式
-  :{t:a[0],rt:a[1],lat:a[2],lon:a[3],X:a[4],Y:a[5],acc:a[6],src:a[7],cell:a[8]||''});
+ S.points=(j.points||[]).map(a=>a.length===13
+  ?{t:a[0],rt:a[1],lat:a[2],lon:a[3],X:a[4],Y:a[5],acc:a[6],src:a[10]==='nmea'?'bt':'ext',cell:a[11]||'',q:a[7],sv:a[8],hdop:a[9]}   // 初期版
+  :{t:a[0],rt:a[1],lat:a[2],lon:a[3],X:a[4],Y:a[5],acc:a[6],src:a[7],cell:a[8]||'',q:a[9]??null,sv:a[10]??null,hdop:a[11]??null});
  S.dxf=j.dxf||null;}catch(e){console.warn(e)}}
 let saveTimer=null,lastSave=0;
 function save(now){clearTimeout(saveTimer);const run=()=>{lastSave=Date.now();try{localStorage.setItem(STORE,JSON.stringify({settings:S.settings,dxf:S.dxf,
- points:S.points.map(p=>[p.t,p.rt,p.lat,p.lon,+p.X.toFixed(3),+p.Y.toFixed(3),p.acc!=null?+p.acc.toFixed(3):null,p.src,p.cell])}))}catch(e){toast('端末内への保存容量が不足しています。CSVを出力してから記録点を消去してください。')}};
+ points:S.points.map(p=>[p.t,p.rt,p.lat,p.lon,+p.X.toFixed(3),+p.Y.toFixed(3),p.acc!=null?+p.acc.toFixed(3):null,p.src,p.cell,p.q??null,p.sv??null,p.hdop??null])}))}catch(e){toast('端末内への保存容量が不足しています。CSVを出力してから記録点を消去してください。')}};
  if(now||Date.now()-lastSave>5000)run();else saveTimer=setTimeout(run,5000)}
 window.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')save(true)});
 window.addEventListener('pagehide',()=>save(true));
@@ -331,25 +332,60 @@ const ptStyle=()=>({radius:3,color:S.settings.base==='photo'?'#FFFFFF':'#12324A'
 function drawPoint(p){L.circleMarker([p.lat,p.lon],{renderer,interactive:false,...ptStyle()}).addTo(ptLayer)}
 function redrawPoints(){ptLayer.clearLayers();S.points.forEach(drawPoint)}
 
-/* ===== 受信(端末の位置情報) ===== */
+/* ===== 受信 ===== */
 let fix=null,geoWatch=null,zoomed=false,connected=false;
-const SRC={ext:'外部GNSS',int:'内部GNSS'};
-const NOTE={ext:'Drogger GPS アプリでDG-PRO1Sに接続し、開発者向けオプションの「仮の現在地情報アプリ」に Drogger GPS を選んでおいてください。',
- int:'スマホ内蔵のGNSSを使います。開発者向けオプションの「仮の現在地情報アプリ」は「なし」にしてください(Drogger GPSが選ばれていると外部GNSSの位置になります)。精度は数m程度です。'};
+const SRC={bt:'外部GNSS',ext:'外部GNSS(アプリ経由・旧)',int:'内部GNSS'};
+const QN={0:'測位なし',1:'単独',2:'DGPS/SBAS',4:'RTK Fix',5:'RTK Float',6:'推測'};
+const NOTE={
+ bt:'DG-PRO1SとBluetoothで直接つなぎ、受信機の位置(NMEA)だけを使います。端末内蔵GNSSの位置は使いません。接続前にDrogger GPSアプリを受信機から切断してください。',
+ int:'スマホ・タブレット内蔵のGNSSを使います。精度は数m程度です。開発者向けオプションの「仮の現在地情報アプリ」は「なし」にしてください。'};
 function onFix(f){const p=toPlane(f.lat,f.lon,S.settings.zone);f.X=p.X;f.Y=p.Y;fix=f;
  const ll=[f.lat,f.lon];curMk.setLatLng(ll);if(!map.hasLayer(curMk))curMk.addTo(map);
- if(f.acc!=null){accCircle.setLatLng(ll).setRadius(f.acc);if(!map.hasLayer(accCircle))accCircle.addTo(map)}
+ if(f.acc!=null){accCircle.setLatLng(ll).setRadius(f.acc);if(!map.hasLayer(accCircle))accCircle.addTo(map)}else if(map.hasLayer(accCircle))map.removeLayer(accCircle);
  if(!zoomed){zoomed=true;if(follow)map.setView(ll,Math.max(map.getZoom(),19),{animate:false})}else if(follow)map.panTo(ll,{animate:false});
- const cq=$('#cQ');cq.textContent=f.acc!=null?`±${f.acc<10?f.acc.toFixed(2):f.acc.toFixed(0)}m`:'測位中';
- cq.className='chip '+(f.acc!=null&&f.acc<=1?'ok':f.acc!=null&&f.acc>5?'warn':'');
+ const cq=$('#cQ');
+ if(f.q!=null){cq.textContent=QN[f.q]||('品質'+f.q);cq.className='chip '+(f.q===4?'ok':f.q===1||f.q===0?'warn':'')}
+ else{cq.textContent=f.acc!=null?`±${f.acc<10?f.acc.toFixed(2):f.acc.toFixed(0)}m`:'測位中';cq.className='chip '+(f.acc!=null&&f.acc<=1?'ok':f.acc!=null&&f.acc>5?'warn':'')}
  $('#oT').textContent=fmtLocal(f.t);$('#oLL').textContent=`${f.lat.toFixed(8)} / ${f.lon.toFixed(8)}`;
  $('#oXY').textContent=`${f.X.toFixed(3)} / ${f.Y.toFixed(3)}`;const i=cellIdx(f.X,f.Y);$('#oCell').textContent=i<0?(M?'範囲外':'—'):`${cellName(i)}(${M.n[i]}点)`;
- $('#oAcc').textContent=f.acc!=null?`±${f.acc.toFixed(2)}m`:'—'}
-function connect(){if(!('geolocation' in navigator)){toast('この端末では位置情報を取得できません');return}
- geoWatch=navigator.geolocation.watchPosition(p=>onFix({t:p.timestamp,rt:Date.now(),lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,src:S.settings.source}),
-  e=>{toast(e.code===1?'位置情報の利用が許可されていません。ブラウザの設定で許可してください。':'位置情報を取得できません:'+e.message,5000);if(e.code===1)disconnect()},
-  {enableHighAccuracy:true,maximumAge:0,timeout:20000});setConn(true)}
-function disconnect(){if(geoWatch!=null)navigator.geolocation.clearWatch(geoWatch);geoWatch=null;setConn(false)}
+ $('#oAcc').textContent=[f.acc!=null?`±${f.acc.toFixed(2)}m`:'—',f.q!=null?(QN[f.q]||f.q):'—',f.sv!=null?`${f.sv}衛星`:'—'].join(' / ')}
+
+/* 端末の位置情報(アプリ経由・内部) */
+function startGeo(){if(!('geolocation' in navigator)){toast('この端末では位置情報を取得できません');return false}
+ geoWatch=navigator.geolocation.watchPosition(p=>{if(S.settings.source!=='int')return;onFix({t:p.timestamp,rt:Date.now(),lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,q:null,sv:null,hdop:null,src:'int'})},
+  e=>{toast(e.code===1?'位置情報の利用が許可されていません。Chromeの位置情報を「許可」にしてください。':'位置情報を取得できません:'+e.message,5000);if(e.code===1)disconnect()},
+  {enableHighAccuracy:true,maximumAge:0,timeout:20000});return true}
+
+/* Bluetooth直接接続(Web Serial / NMEA) */
+const BT={port:null,reader:null,closed:null,keep:false,date:null,lines:0,gga:0,bad:0,last:'',lastAt:0,t0:0,diag:null};
+function nmeaOk(l){const a=l.indexOf('$'),b=l.indexOf('*');if(a<0||b<a)return false;let c=0;for(let i=a+1;i<b;i++)c^=l.charCodeAt(i);return c===parseInt(l.slice(b+1,b+3),16)}
+function dm(v,h,n){if(!v)return null;const x=parseInt(v.slice(0,n),10)+parseFloat(v.slice(n))/60;return(h==='S'||h==='W')?-x:x}
+function parseNmea(l){BT.lines++;BT.lastAt=Date.now();if(!nmeaOk(l)){BT.bad++;return}BT.last=l.slice(0,82);if(/^\$..GGA/.test(l))BT.gga++;const f=l.slice(l.indexOf('$')+1,l.indexOf('*')).split(',');const ty=f[0].slice(2);
+ if(ty==='RMC'){const d=f[9];if(d&&d.length===6)BT.date={y:2000+ +d.slice(4,6),m:+d.slice(2,4),d:+d.slice(0,2)}}
+ else if(ty==='GST'){const a=parseFloat(f[6]),b=parseFloat(f[7]);if(fix&&isFinite(a)&&isFinite(b))fix.acc=Math.sqrt(a*a+b*b)}
+ else if(ty==='GGA'){const q=parseInt(f[6]||'0',10);if(!q){$('#cQ').textContent='測位なし';$('#cQ').className='chip warn';return}
+  const lat=dm(f[2],f[3],2),lon=dm(f[4],f[5],3);if(lat==null||lon==null)return;let t=Date.now();const tm=f[1];
+  if(tm&&tm.length>=6){const n=new Date(),D=BT.date||{y:n.getUTCFullYear(),m:n.getUTCMonth()+1,d:n.getUTCDate()};t=Date.UTC(D.y,D.m-1,D.d,+tm.slice(0,2),+tm.slice(2,4),0)+Math.round(parseFloat(tm.slice(4))*1000)}
+  onFix({t,rt:Date.now(),lat,lon,acc:fix&&fix.src==='bt'?fix.acc:null,q,sv:parseInt(f[7],10)||0,hdop:parseFloat(f[8])||null,src:'bt'})}}
+async function startBT(){if(!('serial' in navigator)){toast('このChromeはBluetooth直接接続に対応していません。Chromeを最新版に更新してください(138以降が必要)。',6000);return false}
+ try{const port=await navigator.serial.requestPort({allowedBluetoothServiceClassIds:['00001101-0000-1000-8000-00805f9b34fb']});
+  await port.open({baudRate:115200});BT.port=port;BT.keep=true;Object.assign(BT,{lines:0,gga:0,bad:0,last:'',lastAt:0,t0:Date.now()});clearInterval(BT.diag);BT.diag=setInterval(updDiag,1000);$('#btDiag').hidden=false;updDiag();
+  const dec=new TextDecoderStream();BT.closed=port.readable.pipeTo(dec.writable).catch(()=>{});BT.reader=dec.readable.getReader();
+  (async()=>{let buf='';try{while(BT.keep){const{value,done}=await BT.reader.read();if(done)break;buf+=value;let i;
+    while((i=buf.indexOf('\n'))>=0){const ln=buf.slice(0,i).trim();buf=buf.slice(i+1);if(ln)parseNmea(ln)}if(buf.length>8192)buf=''}}
+   catch(e){if(BT.keep){toast('DG-PRO1Sとの接続が切れました。もう一度「接続」を押してください。',5000);disconnect()}}})();
+  return true}
+ catch(e){if(e.name!=='NotFoundError')toast('接続できませんでした:'+e.message+'(Drogger GPSアプリが接続中だとつながりません)',6000);return false}}
+async function stopBT(){BT.keep=false;clearInterval(BT.diag);$('#btDiag').hidden=true;try{await BT.reader?.cancel()}catch{}try{await BT.closed}catch{}try{await BT.port?.close()}catch{}BT.port=null}
+
+function updDiag(){const el=$('#btDiag'),sec=(Date.now()-BT.t0)/1000,age=BT.lastAt?(Date.now()-BT.lastAt)/1000:null;let msg,warn=false;
+ if(!BT.lines){msg=sec<5?'受信機からのデータを待っています…':'受信機からデータが届いていません。Drogger GPSアプリが受信機につながったままになっていないか、受信機の電源とBluetoothを確認してください。';warn=sec>=5}
+ else if(age>3){msg=`データが${age.toFixed(0)}秒途絶えています。Bluetoothの届く範囲か確認してください。`;warn=true}
+ else if(!BT.gga){msg=sec<5?'データ受信中…':'データは届いていますが位置(GGA)がありません。受信機のNMEA出力でGGAを有効にしてください。';warn=sec>=5}
+ else msg='受信機から位置データを受信中です(内蔵GNSSは使っていません)。';
+ el.innerHTML=`<b style="color:${warn?'var(--orange)':'var(--teal)'}">${esc(msg)}</b><br><span style="font-size:12px;color:var(--muted)">受信 ${BT.lines.toLocaleString()}行 / 位置 ${BT.gga.toLocaleString()}回 / 破損 ${BT.bad}<br>${esc(BT.last||'—')}</span>`}
+async function connect(){fix=null;if(geoWatch!=null){navigator.geolocation.clearWatch(geoWatch);geoWatch=null}const ok=S.settings.source==='bt'?await startBT():startGeo();if(ok)setConn(true)}
+function disconnect(){if(geoWatch!=null)navigator.geolocation.clearWatch(geoWatch);geoWatch=null;stopBT();setConn(false)}
 function setConn(on){connected=on;$('#bConn').textContent=on?'切断':'接続';$('#bConn').classList.toggle('pri',!on);
  $('#cSrc').textContent=on?SRC[S.settings.source]:'未接続';$('#cSrc').className='chip '+(on?'ok':'');$('#sSrc').disabled=on}
 $('#bConn').onclick=()=>connected?disconnect():connect();
@@ -368,11 +404,11 @@ function setRec(on){rec.on=on;const b=$('#recBtn');b.textContent=on?'記録停�
 function tick(){const now=Date.now(),iv=S.settings.interval*1000;
  if(now>=rec.next){record();rec.next=Math.floor(now/iv)*iv+iv}
  const r=Math.max(0,rec.next-now);$('#oNext').textContent=(r/1000).toFixed(r<10000?1:0)+'秒'+(rec.miss?`(未測位で見送り ${rec.miss}回)`:'')}
-function record(){if(!fix||Date.now()-fix.rt>3000){rec.miss++;return}
- const f=fix,p={t:f.t,rt:Date.now(),lat:f.lat,lon:f.lon,X:f.X,Y:f.Y,acc:f.acc,src:f.src,cell:''};
+function record(){if(!fix||fix.src!==S.settings.source||Date.now()-fix.rt>3000){rec.miss++;return}
+ const f=fix,p={t:f.t,rt:Date.now(),lat:f.lat,lon:f.lon,X:f.X,Y:f.Y,acc:f.acc,src:f.src,cell:'',q:f.q,sv:f.sv,hdop:f.hdop};
  const i=cellIdx(p.X,p.Y);if(i>=0)p.cell=cellName(i);S.points.push(p);if(i>=0){addToCell(i,p);updMeshSum()}
  drawPoint(p);$('#cN').textContent=S.points.length.toLocaleString()+'点';updOut();save()}
-$('#recBtn').onclick=()=>{if(!rec.on&&!connected){connect();toast('接続しました。測位が始まると記録されます。')}setRec(!rec.on)};
+$('#recBtn').onclick=()=>{if(!rec.on&&!connected){toast('先に「接続」を押してGNSSにつないでください');return}setRec(!rec.on)};
 $('#sIv').onchange=e=>{S.settings.interval=+e.target.value;save()};
 
 /* ===== メッシュ設定(寸法指定) ===== */
@@ -479,8 +515,8 @@ function stamp(){const d=new Date();return`${d.getFullYear()}${pad(d.getMonth()+
 function download(name,text,type){const blob=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
 const csv=rows=>'\uFEFF'+rows.map(r=>r.map(v=>v==null?'':(/[",\n]/.test(String(v))?`"${String(v).replace(/"/g,'""')}"`:v)).join(',')).join('\r\n');
 $('#bPtCsv').onclick=()=>{if(!S.points.length){toast('記録点がありません');return}const z=S.settings.zone;
- const rows=[['No','GNSS時刻(UTC)','GNSS時刻','端末記録時刻','緯度','経度',`X(${z}系)`,`Y(${z}系)`,'精度(m)','受信方法','メッシュID']];
- S.points.forEach((p,i)=>rows.push([i+1,fmtUTC(p.t),fmtLocal(p.t,3),fmtLocal(p.rt,3),p.lat.toFixed(9),p.lon.toFixed(9),p.X.toFixed(3),p.Y.toFixed(3),p.acc!=null?p.acc.toFixed(3):'',SRC[p.src]||'',p.cell]));
+ const rows=[['No','GNSS時刻(UTC)','GNSS時刻','端末記録時刻','緯度','経度',`X(${z}系)`,`Y(${z}系)`,'精度(m)','測位品質','衛星数','HDOP','受信方法','メッシュID']];
+ S.points.forEach((p,i)=>rows.push([i+1,fmtUTC(p.t),fmtLocal(p.t,3),fmtLocal(p.rt,3),p.lat.toFixed(9),p.lon.toFixed(9),p.X.toFixed(3),p.Y.toFixed(3),p.acc!=null?p.acc.toFixed(3):'',p.q!=null?(QN[p.q]||p.q):'',p.sv??'',p.hdop??'',SRC[p.src]||'',p.cell]));
  download(`浚渫_記録点_${stamp()}.csv`,csv(rows),'text/csv')};
 $('#bMeshCsv').onclick=()=>{if(!M){toast('メッシュが未作成です');return}const s=S.settings;
  const rows=[['メッシュID','行','列','中心X','中心Y','中心緯度','中心経度','記録点数','状態','初回時刻','最終時刻']];
@@ -500,7 +536,7 @@ function updOut(){const n=S.points.length;$('#outSum').textContent=n?`記録点 
 fillUI();setBase(S.settings.base);buildMesh();redrawPoints();$('#cN').textContent=S.points.length.toLocaleString()+'点';updOut();
 if(M){fitMesh();setFollow(false)}
 // 位置情報が許可済みなら自動で接続して現在地を表示
-try{navigator.permissions?.query({name:'geolocation'}).then(r=>{if(r.state==='granted'&&!connected)connect()}).catch(()=>{})}catch{}
+try{if(S.settings.source==='int')navigator.permissions?.query({name:'geolocation'}).then(r=>{if(r.state==='granted'&&!connected)connect()}).catch(()=>{})}catch{}
 </script>
 </body>
 </html>
