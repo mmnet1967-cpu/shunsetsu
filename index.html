@@ -82,7 +82,7 @@ label.chk input{width:20px;height:20px;min-height:0;flex:none}
 </head>
 <body>
 <header>
-  <h1>浚渫 出来形記録 <small style="font-weight:400;font-size:11px;opacity:.8">v1.4</small></h1>
+  <h1>浚渫 出来形記録 <small style="font-weight:400;font-size:11px;opacity:.8">v1.5</small></h1>
   <div class="chips">
     <span class="chip" id="cSrc">未接続</span>
     <span class="chip" id="cQ">測位なし</span>
@@ -357,10 +357,10 @@ function startGeo(){if(!('geolocation' in navigator)){toast('この端末では�
   {enableHighAccuracy:true,maximumAge:0,timeout:20000});return true}
 
 /* Bluetooth直接接続(Web Serial / NMEA) */
-const BT={port:null,reader:null,closed:null,keep:false,date:null,lines:0,gga:0,bad:0,last:'',lastAt:0,t0:0,diag:null};
+const BT={port:null,reader:null,closed:null,keep:false,date:null,lines:0,gga:0,bad:0,last:'',lastAt:0,t0:0,diag:null,bytes:0,bin:0,hex:''};
 function nmeaOk(l){const a=l.indexOf('$'),b=l.indexOf('*');if(a<0||b<a)return false;let c=0;for(let i=a+1;i<b;i++)c^=l.charCodeAt(i);return c===parseInt(l.slice(b+1,b+3),16)}
 function dm(v,h,n){if(!v)return null;const x=parseInt(v.slice(0,n),10)+parseFloat(v.slice(n))/60;return(h==='S'||h==='W')?-x:x}
-function parseNmea(l){BT.lines++;BT.lastAt=Date.now();if(!nmeaOk(l)){BT.bad++;return}BT.last=l.slice(0,82);if(/^\$..GGA/.test(l))BT.gga++;const f=l.slice(l.indexOf('$')+1,l.indexOf('*')).split(',');const ty=f[0].slice(2);
+function parseNmea(l){BT.lines++;if(!nmeaOk(l)){BT.bad++;return}BT.last=l.slice(0,82);if(/^\$..GGA/.test(l))BT.gga++;const f=l.slice(l.indexOf('$')+1,l.indexOf('*')).split(',');const ty=f[0].slice(2);
  if(ty==='RMC'){const d=f[9];if(d&&d.length===6)BT.date={y:2000+ +d.slice(4,6),m:+d.slice(2,4),d:+d.slice(0,2)}}
  else if(ty==='GST'){const a=parseFloat(f[6]),b=parseFloat(f[7]);if(fix&&isFinite(a)&&isFinite(b))fix.acc=Math.sqrt(a*a+b*b)}
  else if(ty==='GGA'){const q=parseInt(f[6]||'0',10);if(!q){$('#cQ').textContent='測位なし';$('#cQ').className='chip warn';return}
@@ -369,21 +369,30 @@ function parseNmea(l){BT.lines++;BT.lastAt=Date.now();if(!nmeaOk(l)){BT.bad++;re
   onFix({t,rt:Date.now(),lat,lon,acc:fix&&fix.src==='bt'?fix.acc:null,q,sv:parseInt(f[7],10)||0,hdop:parseFloat(f[8])||null,src:'bt'})}}
 async function startBT(){if(!('serial' in navigator)){toast('このChromeはBluetooth直接接続に対応していません。Chromeを最新版に更新してください(138以降が必要)。',6000);return false}
  try{const port=await navigator.serial.requestPort({allowedBluetoothServiceClassIds:['00001101-0000-1000-8000-00805f9b34fb']});
-  await port.open({baudRate:115200});BT.port=port;BT.keep=true;Object.assign(BT,{lines:0,gga:0,bad:0,last:'',lastAt:0,t0:Date.now()});clearInterval(BT.diag);BT.diag=setInterval(updDiag,1000);$('#btDiag').hidden=false;updDiag();
-  const dec=new TextDecoderStream();BT.closed=port.readable.pipeTo(dec.writable).catch(()=>{});BT.reader=dec.readable.getReader();
-  (async()=>{let buf='';try{while(BT.keep){const{value,done}=await BT.reader.read();if(done)break;buf+=value;let i;
-    while((i=buf.indexOf('\n'))>=0){const ln=buf.slice(0,i).trim();buf=buf.slice(i+1);if(ln)parseNmea(ln)}if(buf.length>8192)buf=''}}
-   catch(e){if(BT.keep){toast('DG-PRO1Sとの接続が切れました。もう一度「接続」を押してください。',5000);disconnect()}}})();
+  await port.open({baudRate:115200,bufferSize:65536});BT.port=port;BT.keep=true;
+  try{await port.setSignals({dataTerminalReady:true,requestToSend:true})}catch{}
+  Object.assign(BT,{lines:0,gga:0,bad:0,last:'',lastAt:0,t0:Date.now(),bytes:0,bin:0,hex:''});clearInterval(BT.diag);BT.diag=setInterval(updDiag,1000);$('#btDiag').hidden=false;updDiag();
+  BT.reader=port.readable.getReader();const dec=new TextDecoder('latin1');
+  (async()=>{let buf='';try{while(BT.keep){const{value,done}=await BT.reader.read();if(done)break;if(!value||!value.length)continue;
+    BT.bytes+=value.length;BT.lastAt=Date.now();
+    for(const v of value)if(v>126||(v<32&&v!==10&&v!==13&&v!==9))BT.bin++;
+    if(BT.hex.length<96)BT.hex+=Array.from(value.slice(0,32),v=>v.toString(16).padStart(2,'0')).join(' ')+' ';
+    buf+=dec.decode(value,{stream:true});let i;
+    while((i=buf.indexOf('\n'))>=0){const ln=buf.slice(0,i).trim();buf=buf.slice(i+1);if(ln.includes('$'))parseNmea(ln.slice(ln.indexOf('$')))}if(buf.length>8192)buf=buf.slice(-1024)}}
+   catch(e){if(BT.keep){toast('DG-PRO1Sとの接続が切れました。もう一度「接続」を押してください。',5000);disconnect()}}
+   finally{try{BT.reader.releaseLock()}catch{}}})();
   return true}
  catch(e){if(e.name!=='NotFoundError')toast('接続できませんでした:'+e.message+'(Drogger GPSアプリが接続中だとつながりません)',6000);return false}}
-async function stopBT(){BT.keep=false;clearInterval(BT.diag);$('#btDiag').hidden=true;try{await BT.reader?.cancel()}catch{}try{await BT.closed}catch{}try{await BT.port?.close()}catch{}BT.port=null}
+async function stopBT(){BT.keep=false;clearInterval(BT.diag);$('#btDiag').hidden=true;try{await BT.reader?.cancel()}catch{}try{await BT.port?.close()}catch{}BT.port=null}
 
-function updDiag(){const el=$('#btDiag'),sec=(Date.now()-BT.t0)/1000,age=BT.lastAt?(Date.now()-BT.lastAt)/1000:null;let msg,warn=false;
- if(!BT.lines){msg=sec<5?'受信機からのデータを待っています…':'受信機からデータが届いていません。Drogger GPSアプリが受信機につながったままになっていないか、受信機の電源とBluetoothを確認してください。';warn=sec>=5}
- else if(age>3){msg=`データが${age.toFixed(0)}秒途絶えています。Bluetoothの届く範囲か確認してください。`;warn=true}
- else if(!BT.gga){msg=sec<5?'データ受信中…':'データは届いていますが位置(GGA)がありません。受信機のNMEA出力でGGAを有効にしてください。';warn=sec>=5}
- else msg='受信機から位置データを受信中です(内蔵GNSSは使っていません)。';
- el.innerHTML=`<b style="color:${warn?'var(--orange)':'var(--teal)'}">${esc(msg)}</b><br><span style="font-size:12px;color:var(--muted)">受信 ${BT.lines.toLocaleString()}行 / 位置 ${BT.gga.toLocaleString()}回 / 破損 ${BT.bad}<br>${esc(BT.last||'—')}</span>`}
+function updDiag(){const el=$('#btDiag'),sec=(Date.now()-BT.t0)/1000,age=BT.lastAt?(Date.now()-BT.lastAt)/1000:null;let msg,warn=true;
+ if(!BT.bytes)msg=sec<5?'受信機からのデータを待っています…':'Bluetoothは接続できましたが、受信機からデータが1バイトも届いていません(下の「確認してほしいこと」を参照)。';
+ else if(age>3)msg=`データが${age.toFixed(0)}秒途絶えています。Bluetoothの届く範囲か確認してください。`;
+ else if(!BT.lines&&BT.bin>BT.bytes*0.2)msg='データは届いていますが、NMEAではないバイナリ形式(UBXなど)です。受信機の設定でNMEA出力を有効にしてください。';
+ else if(!BT.gga)msg=sec<5?'データ受信中…':'NMEAは届いていますが位置(GGA)がありません。受信機の設定でGGA出力を有効にしてください。';
+ else{msg='受信機から位置データを受信中です(内蔵GNSSは使っていません)。';warn=false}
+ if(sec<5&&!BT.bytes)warn=false;
+ el.innerHTML=`<b style="color:${warn?'var(--orange)':'var(--teal)'}">${esc(msg)}</b><br><span style="font-size:12px;color:var(--muted)">受信 ${BT.bytes.toLocaleString()}バイト / NMEA ${BT.lines.toLocaleString()}行 / 位置 ${BT.gga.toLocaleString()}回 / 破損 ${BT.bad}<br>${esc(BT.last||(BT.hex?'先頭データ: '+BT.hex.trim():'—'))}</span>`}
 async function connect(){fix=null;if(geoWatch!=null){navigator.geolocation.clearWatch(geoWatch);geoWatch=null}const ok=S.settings.source==='bt'?await startBT():startGeo();if(ok)setConn(true)}
 function disconnect(){if(geoWatch!=null)navigator.geolocation.clearWatch(geoWatch);geoWatch=null;stopBT();setConn(false)}
 function setConn(on){connected=on;$('#bConn').textContent=on?'切断':'接続';$('#bConn').classList.toggle('pri',!on);
