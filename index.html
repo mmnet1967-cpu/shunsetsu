@@ -82,7 +82,7 @@ label.chk input{width:20px;height:20px;min-height:0;flex:none}
 </head>
 <body>
 <header>
-  <h1>浚渫 出来形記録 <small style="font-weight:400;font-size:11px;opacity:.8">v1.5</small></h1>
+  <h1>浚渫 出来形記録 <small style="font-weight:400;font-size:11px;opacity:.8">v1.6</small></h1>
   <div class="chips">
     <span class="chip" id="cSrc">未接続</span>
     <span class="chip" id="cQ">測位なし</span>
@@ -141,6 +141,15 @@ label.chk input{width:20px;height:20px;min-height:0;flex:none}
         <div><b>次の記録まで</b><span id="oNext">—</span></div>
       </div>
       <p class="note">記録中は画面を点けたままにしてください(スリープ防止を自動で要求します)。記録点ごとにGNSS時刻と端末時刻の両方を保存します。</p>
+      <div class="summary">
+        <b>NMEAログの取り込み</b>
+        <p class="note">Drogger GPSアプリのNMEAログや、ターミナルアプリで保存したログを読み込み、上の「記録間隔」で間引いて記録点にします。</p>
+        <div class="row">
+          <label class="f">ログファイル<input id="fNmea" type="file" accept=".nmea,.txt,.log,.ubx,text/plain"></label>
+          <label class="f s">対象<select id="sQf"><option value="all">すべて</option><option value="fix">RTK Fixのみ</option><option value="rtk">Fix・Float</option></select></label>
+        </div>
+        <div id="nmeaSum" class="note"></div>
+      </div>
     </div>
 
     <div class="pane" id="pMesh">
@@ -334,7 +343,7 @@ function redrawPoints(){ptLayer.clearLayers();S.points.forEach(drawPoint)}
 
 /* ===== 受信 ===== */
 let fix=null,geoWatch=null,zoomed=false,connected=false;
-const SRC={bt:'外部GNSS',ext:'外部GNSS(アプリ経由・旧)',int:'内部GNSS'};
+const SRC={log:'外部GNSS(ログ取込)',bt:'外部GNSS',ext:'外部GNSS(アプリ経由・旧)',int:'内部GNSS'};
 const QN={0:'測位なし',1:'単独',2:'DGPS/SBAS',4:'RTK Fix',5:'RTK Float',6:'推測'};
 const NOTE={
  bt:'DG-PRO1SとBluetoothで直接つなぎ、受信機の位置(NMEA)だけを使います。端末内蔵GNSSの位置は使いません。接続前にDrogger GPSアプリを受信機から切断してください。',
@@ -401,6 +410,30 @@ $('#bConn').onclick=()=>connected?disconnect():connect();
 $('#bHere').onclick=()=>{if(!connected){toast('「記録」タブの「接続」を押すと現在地を表示します');return}
  setFollow(true);if(fix)map.setView([fix.lat,fix.lon],Math.max(map.getZoom(),19));else toast('現在地を測位中です')};
 $('#sSrc').onchange=e=>{S.settings.source=e.target.value;$('#srcNote').textContent=NOTE[e.target.value];save()};
+
+
+/* ===== NMEAログ取込 ===== */
+function parseNmeaLog(text){const out=[];let date=null,lastT=null;
+ for(const raw of text.split(/\r?\n/)){const k=raw.indexOf('$');if(k<0)continue;const l=raw.slice(k).trim();if(!nmeaOk(l))continue;
+  const f=l.slice(1,l.indexOf('*')).split(','),ty=f[0].slice(2);
+  if(ty==='RMC'){const d=f[9];if(d&&d.length===6)date=Date.UTC(2000+ +d.slice(4,6),+d.slice(2,4)-1,+d.slice(0,2))}
+  else if(ty==='GGA'){const q=parseInt(f[6]||'0',10);if(!q||!date)continue;const lat=dm(f[2],f[3],2),lon=dm(f[4],f[5],3),tm=f[1];if(lat==null||lon==null||!tm||tm.length<6)continue;
+   let t=date+(+tm.slice(0,2))*3600000+(+tm.slice(2,4))*60000+Math.round(parseFloat(tm.slice(4))*1000);
+   if(lastT!=null&&t<lastT-43200000)t+=86400000; // 日付またぎ
+   lastT=t;out.push({t,lat,lon,q,sv:parseInt(f[7],10)||0,hdop:parseFloat(f[8])||null})}}
+ return out}
+$('#fNmea').onchange=async e=>{const file=e.target.files[0];if(!file)return;const el=$('#nmeaSum');el.textContent='読み込み中…';
+ try{const fixes=parseNmeaLog(new TextDecoder('latin1').decode(await file.arrayBuffer()));
+  if(!fixes.length){el.textContent='位置データ(GGAと日付入りのRMC)が見つかりませんでした。NMEAのGGAとRMCを含むログか確認してください。';return}
+  const qf=$('#sQf').value,okQ=q=>qf==='all'||(qf==='fix'?q===4:(q===4||q===5));
+  const iv=S.settings.interval*1000,have=new Set(S.points.map(p=>p.t));let bucket=null,add=0,skipQ=0;
+  for(const f of fixes){const b=Math.floor(f.t/iv);if(b===bucket)continue;if(!okQ(f.q)){skipQ++;continue}bucket=b;if(have.has(f.t))continue;
+   const P=toPlane(f.lat,f.lon,S.settings.zone);S.points.push({t:f.t,rt:f.t,lat:f.lat,lon:f.lon,X:P.X,Y:P.Y,acc:null,q:f.q,sv:f.sv,hdop:f.hdop,src:'log',cell:''});add++}
+  S.points.sort((a,b)=>a.t-b.t);redrawPoints();recount();$('#cN').textContent=S.points.length.toLocaleString()+'点';save(true);
+  const fx=fixes.filter(f=>f.q===4).length;
+  el.textContent=`${file.name}:位置 ${fixes.length.toLocaleString()}件(RTK Fix ${(fx/fixes.length*100).toFixed(0)}%)、${fmtLocal(fixes[0].t,0)} 〜 ${fmtLocal(fixes[fixes.length-1].t,0)}。${S.settings.interval}秒間隔で ${add.toLocaleString()}点を追加しました。`;
+  if(add&&M){setFollow(false);fitMesh()}else if(add)map.fitBounds(L.latLngBounds(S.points.map(p=>[p.lat,p.lon])),{padding:[20,20]});
+ }catch(err){el.textContent='読み込めませんでした:'+err.message}e.target.value=''};
 
 /* ===== 記録 ===== */
 const rec={on:false,timer:null,next:0,miss:0};let wake=null;
